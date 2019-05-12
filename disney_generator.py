@@ -2,31 +2,16 @@
 import numpy as np
 import torch
 from torch import nn
-
+import argparse
 import torch.nn.functional as F
 
-# TODO C
-# Open shakespeare text file and read in data as `text`
-with open('shakespeare.txt', 'r') as f:
-    text = f.read()
-
-# Showing the first 100 characters
-text[:100]
-
-# encoding the text and map each character to an integer and vice versa
-
-# We create two dictionaries:
-# 1. int2char, which maps integers to characters
-# 2. char2int, which maps characters to integers
-chars = tuple(set(text))
-int2char = dict(enumerate(chars))
-char2int = {ch: ii for ii, ch in int2char.items()}
-
-# Encode the text
-encoded = np.array([char2int[ch] for ch in text])
-
-# Showing the first 100 encoded characters
-encoded[:100]
+# Check if GPU is available
+train_on_gpu = torch.cuda.is_available()
+model_name = 'rnn_20_epoch.net'
+if(train_on_gpu):
+    print('Training on GPU!')
+else:
+    print('No GPU available, training on CPU; consider making n_epochs very small.')
 
 # Defining method to encode one hot labels
 def one_hot_encode(arr, n_labels):
@@ -74,13 +59,6 @@ def get_batches(arr, batch_size, seq_length):
         except IndexError:
             y[:, :-1], y[:, -1] = x[:, 1:], arr[:, 0]
         yield x, y
-
-# Check if GPU is available
-train_on_gpu = torch.cuda.is_available()
-if(train_on_gpu):
-    print('Training on GPU!')
-else:
-    print('No GPU available, training on CPU; consider making n_epochs very small.')
 
 # Declaring the model
 class CharRNN(nn.Module):
@@ -239,32 +217,6 @@ def train(net, data, epochs=2, batch_size=10, seq_length=50, lr=0.001, clip=5, v
                       "Loss: {:.4f}...".format(loss.item()),
                       "Val Loss: {:.4f}".format(np.mean(val_losses)))
 
-# Define and print the net
-n_hidden=512
-n_layers=2
-
-net = CharRNN(chars, n_hidden, n_layers)
-print(net)
-
-# Declaring the hyperparameters
-batch_size = 128
-seq_length = 100
-n_epochs = 20 # start smaller if you are just testing initial behavior
-
-# train the model
-train(net, encoded, epochs=n_epochs, batch_size=batch_size, seq_length=seq_length, lr=0.001, print_every=50)
-
-# Saving the model
-model_name = 'rnn_20_epoch.net'
-
-checkpoint = {'n_hidden': net.n_hidden,
-              'n_layers': net.n_layers,
-              'state_dict': net.state_dict(),
-              'tokens': net.chars}
-
-with open(model_name, 'wb') as f:
-    torch.save(checkpoint, f)
-
 # Defining a method to generate the next character
 def predict(net, char, h=None, top_k=None):
         ''' Given a character, predict the next character.
@@ -306,6 +258,7 @@ def predict(net, char, h=None, top_k=None):
 # Declaring a method to generate new text
 def sample(net, size, prime='The', top_k=None):
 
+
     if(train_on_gpu):
         net.cuda()
     else:
@@ -328,5 +281,100 @@ def sample(net, size, prime='The', top_k=None):
 
     return ''.join(chars)
 
-# Generating new text
-print(sample(net, 1000, prime='A', top_k=5))
+def argument_parser():
+    parser = argparse.ArgumentParser(description='FaceSwapApp')
+    parser.add_argument('--train', default=False, action='store_true', help='Train RNN color')
+    parser.add_argument('--run', default=True, action='store_true', help='Run RNN')
+    parser.add_argument('--epoch', default=10)
+    return(parser.parse_args())
+
+def run():
+    with open('shakespeare.txt', 'r') as f:
+        text = f.read()
+
+    # Showing the first 100 characters
+    text[:100]
+
+    # encoding the text and map each character to an integer and vice versa
+
+    # We create two dictionaries:
+    # 1. int2char, which maps integers to characters
+    # 2. char2int, which maps characters to integers
+    chars = tuple(set(text))
+    int2char = dict(enumerate(chars))
+    char2int = {ch: ii for ii, ch in int2char.items()}
+
+    # Encode the text
+    encoded = np.array([char2int[ch] for ch in text])
+
+    # Showing the first 100 encoded characters
+    encoded[:100]
+
+    # Define and print the net
+    n_hidden=512
+    n_layers=2
+
+    device = torch.device('cpu')
+    net = CharRNN(chars, n_hidden, n_layers)
+    checkpoint = torch.load(model_name)
+    net.load_state_dict(checkpoint['state_dict'])
+    print(sample(net, 1000, prime='A', top_k=5))
+
+def create_network(epochs_count):
+    # Open shakespeare text file and read in data as `text`
+    with open('shakespeare.txt', 'r') as f:
+        text = f.read()
+
+    # Showing the first 100 characters
+    text[:100]
+
+    # encoding the text and map each character to an integer and vice versa
+
+    # We create two dictionaries:
+    # 1. int2char, which maps integers to characters
+    # 2. char2int, which maps characters to integers
+    chars = tuple(set(text))
+    int2char = dict(enumerate(chars))
+    char2int = {ch: ii for ii, ch in int2char.items()}
+
+    # Encode the text
+    encoded = np.array([char2int[ch] for ch in text])
+
+    # Showing the first 100 encoded characters
+    encoded[:100]
+
+    # Define and print the net
+    n_hidden=512
+    n_layers=2
+
+    net = CharRNN(chars, n_hidden, n_layers)
+
+    # Declaring the hyperparameters
+    batch_size = 128
+    seq_length = 100
+    n_epochs = epochs_count # start smaller if you are just testing initial behavior
+
+    # train the model
+    train(net, encoded, epochs=n_epochs, batch_size=batch_size, seq_length=seq_length, lr=0.001, print_every=50)
+
+    # Saving the model
+    model_name = 'rnn_20_epoch.net'
+
+    checkpoint = {'n_hidden': net.n_hidden,
+                'n_layers': net.n_layers,
+                'state_dict': net.state_dict(),
+                'tokens': net.chars}
+
+    with open(model_name, 'wb') as f:
+        torch.save(checkpoint, f)
+
+    print(sample(net, 1000, prime='A', top_k=5))
+
+if __name__ == "__main__":
+    args = argument_parser()
+    print(args)
+    if (args.train):
+        create_network(args.epochs)
+    elif (args.run):
+        run()
+    print("DONE")
